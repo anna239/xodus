@@ -22,6 +22,7 @@ import jetbrains.exodus.bindings.IntegerBinding;
 import jetbrains.exodus.bindings.LongBinding;
 import jetbrains.exodus.core.dataStructures.*;
 import jetbrains.exodus.core.cache.persistent.PersistentCacheClient;
+import jetbrains.exodus.core.dataStructures.decorators.HashMapDecorator;
 import jetbrains.exodus.core.dataStructures.hash.*;
 import jetbrains.exodus.crypto.EncryptedBlobVault;
 import jetbrains.exodus.entitystore.iterate.*;
@@ -62,6 +63,8 @@ public class PersistentStoreTransaction implements StoreTransaction, TxnGetterSt
     private final ObjectCacheBase<PropertyId, PersistentEntityId> linksCache;
     @NotNull
     private final ObjectCacheBase<PropertyId, String> blobStringsCache;
+    @NotNull
+    private final Map<Object, Object> userObjects;
     private EntityIterableCacheAdapter localCache;
     private int localCacheAttempts;
     private int localCacheHits;
@@ -99,6 +102,7 @@ public class PersistentStoreTransaction implements StoreTransaction, TxnGetterSt
         final PersistentEntityStoreConfig config = store.getConfig();
         propsCache = createObjectCache(config.getTransactionPropsCacheSize());
         linksCache = createObjectCache(config.getTransactionLinksCacheSize());
+        userObjects = new HashMapDecorator();
         blobStringsCache = createObjectCache(config.getTransactionBlobStringsCacheSize());
         localCache = source.localCache;
         localCacheAttempts = localCacheHits = 0;
@@ -124,6 +128,7 @@ public class PersistentStoreTransaction implements StoreTransaction, TxnGetterSt
         localCacheAttempts = localCacheHits = 0;
         final Runnable beginHook = getInitCachesBeginHook();
         final Environment env = store.getEnvironment();
+        userObjects = new HashMapDecorator();
         switch (txnType) {
             case Regular:
                 txn = env.beginTransaction(beginHook);
@@ -1231,6 +1236,21 @@ public class PersistentStoreTransaction implements StoreTransaction, TxnGetterSt
         return size == 0 ?
                 new FakeObjectCache<>() :
                 new TransactionObjectCache<>(size);
+    }
+
+    @Nullable
+    @Override
+    public Object getUserObject(@NotNull Object key) {
+        synchronized (userObjects) {
+            return userObjects.get(key);
+        }
+    }
+
+    @Override
+    public void setUserObject(@NotNull Object key, @NotNull Object value) {
+        synchronized (userObjects) {
+            userObjects.put(key, value);
+        }
     }
 
     abstract static class HandleCheckerAdapter implements HandleChecker {
